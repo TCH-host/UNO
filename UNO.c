@@ -5,6 +5,7 @@
 
 #define MAX_CARTES 108
 #define MAX_MAIN 100
+#define MAX_JOUEURS 6
 
 /* Structure d'une carte */
 typedef struct {
@@ -39,6 +40,22 @@ void enlever_fin_ligne(char texte[]) {
         }
         i = i + 1;
     }
+}
+
+/* Calcule l'indice du joueur suivant selon le sens (1 = horaire, -1 = anti-horaire) */
+int prochain_joueur(int tour, int sens, int nb_joueurs) {
+    return (tour + sens + nb_joueurs) % nb_joueurs;
+}
+
+/* Verifie si aucun joueur n'a encore vide sa main */
+int partie_en_cours(const Joueur joueurs[], int nb_joueurs) {
+    int i;
+    for (i = 0; i < nb_joueurs; i = i + 1) {
+        if (joueurs[i].nb_cartes <= 0) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 /* Affiche une carte en ASCII */
@@ -214,7 +231,7 @@ void verifier_regle_uno_humain(Joueur *joueur, Carte pioche[], int *taille_pioch
     }
 }
 
-/* Gere le tour du joueur humain */
+/* Gere le tour d'un joueur humain */
 Carte tour_humain(Joueur *joueur, Carte carte_dessus, char *couleur_active, Carte pioche[], int *taille_pioche, int *bluff_possible) {
     int i;
     char choix[16];
@@ -318,7 +335,7 @@ Carte tour_humain(Joueur *joueur, Carte carte_dessus, char *couleur_active, Cart
     }
 }
 
-/* Gere le tour de l'ordinateur */
+/* Gere le tour d'un joueur ordinateur */
 Carte tour_ia(Joueur *ia, Carte carte_dessus, char *couleur_active, Carte pioche[], int *taille_pioche) {
     int i;
     char couleurs[4] = {'R', 'V', 'J', 'B'};
@@ -384,40 +401,84 @@ Carte tour_ia(Joueur *ia, Carte carte_dessus, char *couleur_active, Carte pioche
 int main(void) {
     Carte pioche[MAX_CARTES];
     int taille_pioche;
-    Joueur humain;
-    Joueur ia;
+    Joueur joueurs[MAX_JOUEURS];
+    int nb_joueurs = 0;
     Carte carte_dessus;
     char couleur_active;
-    int tour_du_joueur = 1; /* 1 = Humain, 0 = IA */
+    int tour = 0;
+    int sens = 1; /* 1 = sens normal, -1 = sens inverse */
     int bluff_possible = 0;
-    int i;
+    int i, j;
 
     srand((unsigned int)time(NULL));
+
+    /* Choix du nombre de joueurs */
+    while (nb_joueurs < 2 || nb_joueurs > MAX_JOUEURS) {
+        char buf[16];
+        printf("Nombre de joueurs (2 a %d) : ", MAX_JOUEURS);
+        if (scanf("%15s", buf) == 1) {
+            vider_buffer();
+            nb_joueurs = atoi(buf);
+            if (nb_joueurs < 2 || nb_joueurs > MAX_JOUEURS) {
+                printf("Veuillez saisir un nombre entre 2 et %d.\n", MAX_JOUEURS);
+            }
+        } else {
+            vider_buffer();
+        }
+    }
+
+    /* Configuration de chaque joueur */
+    for (j = 0; j < nb_joueurs; j = j + 1) {
+        char type_buf[16];
+        int type_val = -1;
+
+        printf("\n--- Joueur %d ---\n", j + 1);
+        printf("Nom du joueur %d : ", j + 1);
+        if (fgets(joueurs[j].nom, sizeof(joueurs[j].nom), stdin) != NULL) {
+            enlever_fin_ligne(joueurs[j].nom);
+        } else {
+            joueurs[j].nom[0] = '\0';
+        }
+
+        while (type_val != 0 && type_val != 1) {
+            printf("Type (1 = Humain, 0 = Ordinateur) : ");
+            if (scanf("%15s", type_buf) == 1) {
+                vider_buffer();
+                if (strcmp(type_buf, "1") == 0) {
+                    type_val = 1;
+                } else if (strcmp(type_buf, "0") == 0) {
+                    type_val = 0;
+                } else {
+                    printf("Reponse invalide, tapez 1 ou 0.\n");
+                }
+            } else {
+                vider_buffer();
+            }
+        }
+
+        joueurs[j].est_humain = type_val;
+        joueurs[j].nb_cartes = 0;
+
+        if (joueurs[j].nom[0] == '\0') {
+            if (joueurs[j].est_humain == 1) {
+                sprintf(joueurs[j].nom, "Humain %d", j + 1);
+            } else {
+                sprintf(joueurs[j].nom, "Ordinateur %d", j + 1);
+            }
+        }
+    }
 
     taille_pioche = creer_paquet(pioche);
     melanger_paquet(pioche, taille_pioche);
 
-    printf("Entrez votre nom : ");
-    if (fgets(humain.nom, sizeof(humain.nom), stdin) != NULL) {
-        enlever_fin_ligne(humain.nom);
-        if (humain.nom[0] == '\0') {
-            strcpy(humain.nom, "Joueur Humain");
-        }
-    } else {
-        strcpy(humain.nom, "Joueur Humain");
-    }
-    humain.nb_cartes = 0;
-    humain.est_humain = 1;
-
-    strcpy(ia.nom, "Ordinateur");
-    ia.nb_cartes = 0;
-    ia.est_humain = 0;
-
+    /* Distribution de 7 cartes a chaque joueur */
     for (i = 0; i < 7; i = i + 1) {
-        piocher_cartes(&humain, pioche, &taille_pioche, 1);
-        piocher_cartes(&ia, pioche, &taille_pioche, 1);
+        for (j = 0; j < nb_joueurs; j = j + 1) {
+            piocher_cartes(&joueurs[j], pioche, &taille_pioche, 1);
+        }
     }
 
+    /* Premiere carte de la defausse */
     taille_pioche = taille_pioche - 1;
     carte_dessus = pioche[taille_pioche];
     couleur_active = carte_dessus.couleur;
@@ -425,68 +486,67 @@ int main(void) {
         couleur_active = 'R';
     }
 
-    while (humain.nb_cartes > 0 && ia.nb_cartes > 0) {
-        if (tour_du_joueur == 1) {
-            Carte nouvelle = tour_humain(&humain, carte_dessus, &couleur_active, pioche, &taille_pioche, &bluff_possible);
+    while (partie_en_cours(joueurs, nb_joueurs) == 1) {
+        Joueur *courant = &joueurs[tour];
+        Carte nouvelle;
 
-            if (strcmp(nouvelle.valeur, carte_dessus.valeur) != 0 || nouvelle.couleur != carte_dessus.couleur) {
-                carte_dessus = nouvelle;
+        if (courant->est_humain == 1) {
+            nouvelle = tour_humain(courant, carte_dessus, &couleur_active, pioche, &taille_pioche, &bluff_possible);
+        } else {
+            bluff_possible = 0;
+            nouvelle = tour_ia(courant, carte_dessus, &couleur_active, pioche, &taille_pioche);
+        }
 
-                if (strcmp(carte_dessus.valeur, "+2") == 0) {
-                    printf("L'ordinateur pioche 2 cartes et passe son tour !\n");
-                    piocher_cartes(&ia, pioche, &taille_pioche, 2);
+        if (strcmp(nouvelle.valeur, carte_dessus.valeur) != 0 || nouvelle.couleur != carte_dessus.couleur) {
+            int suivant = prochain_joueur(tour, sens, nb_joueurs);
+            carte_dessus = nouvelle;
+
+            if (strcmp(carte_dessus.valeur, "RV") == 0) {
+                sens = -sens;
+                printf("Le sens du jeu est inverse !\n");
+                if (nb_joueurs == 2) {
+                    /* A 2 joueurs, RV fait rejouer le joueur courant */
                     continue;
-                } else if (strcmp(carte_dessus.valeur, "+4") == 0) {
-                    int ia_appelle_bluff = (rand() % 100) < 35;
-                    if (ia_appelle_bluff == 1) {
-                        printf("L'ordinateur appelle au bluff sur le +4 !\n");
-                        if (bluff_possible == 1) {
-                            printf("Bluff decouvert ! Vous aviez la couleur precedente : vous piochez 4 cartes.\n");
-                            piocher_cartes(&humain, pioche, &taille_pioche, 4);
-                        } else {
-                            printf("Pas de bluff ! L'ordinateur pioche 6 cartes (4 + 2 penalite) et passe son tour.\n");
-                            piocher_cartes(&ia, pioche, &taille_pioche, 6);
-                            continue;
-                        }
+                }
+            } else if (strcmp(carte_dessus.valeur, "+2") == 0) {
+                printf("%s pioche 2 cartes et passe son tour !\n", joueurs[suivant].nom);
+                piocher_cartes(&joueurs[suivant], pioche, &taille_pioche, 2);
+                tour = prochain_joueur(suivant, sens, nb_joueurs);
+                continue;
+            } else if (strcmp(carte_dessus.valeur, "+4") == 0) {
+                if (courant->est_humain == 1 && joueurs[suivant].est_humain == 0 && ((rand() % 100) < 35)) {
+                    printf("%s appelle au bluff sur le +4 !\n", joueurs[suivant].nom);
+                    if (bluff_possible == 1) {
+                        printf("Bluff decouvert ! %s avait la couleur precedente : il pioche 4 cartes.\n", courant->nom);
+                        piocher_cartes(courant, pioche, &taille_pioche, 4);
                     } else {
-                        printf("L'ordinateur ne conteste pas, pioche 4 cartes et passe son tour !\n");
-                        piocher_cartes(&ia, pioche, &taille_pioche, 4);
+                        printf("Pas de bluff ! %s pioche 6 cartes (4 + 2 penalite) et passe son tour.\n", joueurs[suivant].nom);
+                        piocher_cartes(&joueurs[suivant], pioche, &taille_pioche, 6);
+                        tour = prochain_joueur(suivant, sens, nb_joueurs);
                         continue;
                     }
-                } else if (strcmp(carte_dessus.valeur, "PS") == 0 || strcmp(carte_dessus.valeur, "RV") == 0) {
-                    printf("L'ordinateur passe son tour !\n");
+                } else {
+                    printf("%s pioche 4 cartes et passe son tour !\n", joueurs[suivant].nom);
+                    piocher_cartes(&joueurs[suivant], pioche, &taille_pioche, 4);
+                    tour = prochain_joueur(suivant, sens, nb_joueurs);
                     continue;
                 }
+            } else if (strcmp(carte_dessus.valeur, "PS") == 0) {
+                printf("%s passe son tour !\n", joueurs[suivant].nom);
+                tour = prochain_joueur(suivant, sens, nb_joueurs);
+                continue;
             }
-            tour_du_joueur = 0;
-        } else {
-            Carte nouvelle = tour_ia(&ia, carte_dessus, &couleur_active, pioche, &taille_pioche);
-
-            if (strcmp(nouvelle.valeur, carte_dessus.valeur) != 0 || nouvelle.couleur != carte_dessus.couleur) {
-                carte_dessus = nouvelle;
-
-                if (strcmp(carte_dessus.valeur, "+2") == 0) {
-                    printf("Vous piochez 2 cartes et passez votre tour !\n");
-                    piocher_cartes(&humain, pioche, &taille_pioche, 2);
-                    continue;
-                } else if (strcmp(carte_dessus.valeur, "+4") == 0) {
-                    printf("Vous piochez 4 cartes et passez votre tour !\n");
-                    piocher_cartes(&humain, pioche, &taille_pioche, 4);
-                    continue;
-                } else if (strcmp(carte_dessus.valeur, "PS") == 0 || strcmp(carte_dessus.valeur, "RV") == 0) {
-                    printf("Vous passez votre tour !\n");
-                    continue;
-                }
-            }
-            tour_du_joueur = 1;
         }
+
+        tour = prochain_joueur(tour, sens, nb_joueurs);
     }
 
     printf("\n========================================\n");
-    if (humain.nb_cartes == 0) {
-        printf(" FELICITATIONS ! VOUS AVEZ GAGNE !\n");
-    } else {
-        printf(" DOMMAGE ! L'ORDINATEUR VOUS A GAGNE !\n");
+    for (j = 0; j < nb_joueurs; j = j + 1) {
+        if (joueurs[j].nb_cartes == 0) {
+            printf(" FELICITATIONS ! %s A GAGNE !\n", joueurs[j].nom);
+            break;
+        }
     }
     printf("========================================\n");
 
