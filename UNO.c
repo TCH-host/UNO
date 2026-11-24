@@ -29,7 +29,7 @@ void vider_buffer(void) {
     }
 }
 
-/* Enleve '\n' ou '\r' a la fin d'une chaine (version simple avec une boucle) */
+/* Enleve '\n' ou '\r' a la fin d'une chaine */
 void enlever_fin_ligne(char texte[]) {
     int i = 0;
     while (texte[i] != '\0') {
